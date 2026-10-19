@@ -13,7 +13,9 @@ from .models import (
     PortStackLagPattern,
     SerialSensorTypePattern,
 )
+from .models import SyncProfile
 from .utils import slashless_route_aliases
+from .views import sync_profiles as sync_profile_views
 from .views import (
     AddAsOOBView,
     AddBayTemplateView,
@@ -1143,6 +1145,39 @@ urlpatterns = [
         SerialSensorTypePatternChangeLogView.as_view(),
         name="serialsensortypepattern_changelog",
         kwargs={"model": SerialSensorTypePattern},
+    ),
+    # Sync profiles: scheduled and on-demand sync of LibreNMS devices into NetBox
+    path("sync-profiles/", sync_profile_views.SyncProfileListView.as_view(), name="syncprofile_list"),
+    path("sync-profiles/add/", sync_profile_views.SyncProfileEditView.as_view(), name="syncprofile_add"),
+    path(
+        "sync-profiles/delete/", sync_profile_views.SyncProfileBulkDeleteView.as_view(), name="syncprofile_bulk_delete"
+    ),
+    path("sync-profiles/<int:pk>/", sync_profile_views.SyncProfileView.as_view(), name="syncprofile"),
+    path("sync-profiles/<int:pk>/edit/", sync_profile_views.SyncProfileEditView.as_view(), name="syncprofile_edit"),
+    path(
+        "sync-profiles/<int:pk>/delete/", sync_profile_views.SyncProfileDeleteView.as_view(), name="syncprofile_delete"
+    ),
+    path(
+        "sync-profiles/<int:pk>/changelog/",
+        sync_profile_views.SyncProfileChangeLogView.as_view(),
+        name="syncprofile_changelog",
+        kwargs={"model": SyncProfile},
+    ),
+    path("sync-profiles/<int:pk>/run/", sync_profile_views.SyncProfileRunView.as_view(), name="syncprofile_run_now"),
+    path(
+        "sync-profiles/<int:pk>/schedule/",
+        sync_profile_views.SyncProfileScheduleView.as_view(),
+        name="syncprofile_schedule",
+    ),
+    path(
+        "sync-profiles/<int:pk>/devices/",
+        sync_profile_views.SyncProfileDevicesView.as_view(),
+        name="syncprofile_devices",
+    ),
+    path(
+        "sync-profiles/<int:pk>/runs/<int:job_pk>/",
+        sync_profile_views.SyncProfileRunResultView.as_view(),
+        name="syncprofile_run",
     ),
     path("api/", include("netbox_librenms_plugin.api.urls")),
 ]

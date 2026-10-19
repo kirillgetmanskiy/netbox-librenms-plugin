@@ -1,0 +1,34 @@
+{% load form_helpers %}
+<form hx-post="{% url 'plugins:netbox_librenms_plugin:syncprofile_run_now' pk=object.pk %}" hx-target="#htmx-modal-content">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h5 class="modal-title"><i class="mdi mdi-play-circle-outline text-primary"></i> Run {{ object }}</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+  <div class="modal-body">
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{% for error in form.non_field_errors %}{{ error }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
+    {% endif %}
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-4"><div class="nblp-stat"><div class="nblp-stat-value">{{ device_count }}</div><div class="nblp-stat-label">devices in scope</div></div></div>
+      <div class="col-6 col-md-4"><div class="nblp-stat"><div class="nblp-stat-value">{{ steps|length }}</div><div class="nblp-stat-label">steps</div></div></div>
+      <div class="col-12 col-md-4"><div class="nblp-stat"><div class="nblp-stat-value"><code class="fs-5">{{ object.server_key }}</code></div><div class="nblp-stat-label">LibreNMS server</div></div></div>
+    </div>
+    <div class="nblp-pipeline mb-4">
+      {% for step in steps %}
+        {% if not forloop.first %}<i class="mdi mdi-arrow-right nblp-pipeline-arrow"></i>{% endif %}
+        <span class="nblp-pipeline-step"><span class="nblp-num">{{ forloop.counter }}</span><i class="mdi {{ step.icon }}"></i> {{ step.label }}</span>
+      {% endfor %}
+    </div>
+    {% render_field form.dry_run %}
+    {% render_field form.devices %}
+    <p class="small text-muted mb-0">
+      The run writes as you: it changes only the objects your permissions allow. It runs in the background;
+      the next page follows its progress.
+    </p>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="submit" class="btn btn-primary"><i class="mdi mdi-play"></i> Start</button>
+  </div>
+</form>

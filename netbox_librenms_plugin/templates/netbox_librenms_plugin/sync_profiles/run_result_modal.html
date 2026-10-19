@@ -1,0 +1,11 @@
+<div class="modal-header">
+  <h5 class="modal-title"><i class="mdi mdi-clipboard-text-outline text-primary"></i> {{ object }} · run {{ job.pk }}</h5>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+  {% include 'netbox_librenms_plugin/sync_profiles/inc/run_results.html' %}
+</div>
+<div class="modal-footer">
+  <a class="btn btn-outline-primary" href="{% url 'plugins:netbox_librenms_plugin:syncprofile_run' pk=object.pk job_pk=job.pk %}"><i class="mdi mdi-open-in-new"></i> Open full page</a>
+  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+</div>

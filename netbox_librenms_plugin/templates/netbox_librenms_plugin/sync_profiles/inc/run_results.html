@@ -1,0 +1,134 @@
+{% load helpers %}
+<div data-run-results
+     {% if not finished %}hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_run' pk=object.pk job_pk=job.pk %}?part=results"
+     hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    {% badge job.get_status_display bg_color=job.get_status_color %}
+    {% if data.dry_run or progress.dry_run %}<span class="badge text-bg-info"><i class="mdi mdi-test-tube"></i> Dry run: nothing was saved</span>{% endif %}
+    {% if job.interval %}<span class="badge text-bg-secondary"><i class="mdi mdi-calendar-clock"></i> Scheduled run</span>{% endif %}
+    {% if data.cancelled %}<span class="badge text-bg-warning">Cancelled</span>{% endif %}
+    <span class="text-muted small ms-auto">
+      {% if job.started %}Started {{ job.started|date:"Y-m-d H:i:s" }}{% else %}Queued {{ job.created|date:"Y-m-d H:i:s" }}{% endif %}
+      {% if run.duration is not None %} · {{ run.duration }}s{% endif %}
+      {% if job.user %} · by {{ job.user }}{% endif %}
+    </span>
+  </div>
+
+  {% if not finished %}
+    <div class="alert alert-info d-flex align-items-center gap-2">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      {% if job.status == 'running' %}Syncing devices… this page updates by itself.{% else %}Waiting for a worker to start the run…{% endif %}
+    </div>
+    {% if progress and progress.total %}
+      <div class="mb-3">
+        <div class="d-flex justify-content-between small text-muted mb-1">
+          <span>Step {{ progress.position }} of {{ progress.steps }}: <strong>{{ progress.step }}</strong> · {{ progress.current }}</span>
+          <span>{{ progress.done }} / {{ progress.total }} devices</span>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ progress.total }}" aria-valuenow="{{ progress.done }}">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: {% widthratio progress.done progress.total 100 %}%"></div>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+  {% if job.error %}<div class="alert alert-danger"><strong>The run failed:</strong> {{ job.error }}</div>{% endif %}
+  {% if data.skipped %}<div class="alert alert-warning">{{ data.skipped }}</div>{% endif %}
+
+  {% if data.summary %}
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value">{{ data.summary.devices }}</div><div class="nblp-stat-label">devices</div></div></div>
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value text-primary">{{ data.summary.created }}</div><div class="nblp-stat-label">{% if data.dry_run %}would create{% else %}created{% endif %}</div></div></div>
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value text-primary">{{ data.summary.updated }}</div><div class="nblp-stat-label">{% if data.dry_run %}would update{% else %}updated{% endif %}</div></div></div>
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value text-success">{{ data.summary.ok }}</div><div class="nblp-stat-label">steps unchanged</div></div></div>
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value text-secondary">{{ data.summary.skipped }}</div><div class="nblp-stat-label">steps skipped</div></div></div>
+      <div class="col-6 col-md-2"><div class="nblp-stat"><div class="nblp-stat-value text-danger">{{ data.summary.error }}</div><div class="nblp-stat-label">steps failed</div></div></div>
+    </div>
+  {% endif %}
+
+  {% if data.import %}
+    <div class="card mb-3">
+      <h2 class="card-header"><i class="mdi mdi-database-import"></i> Import of new devices</h2>
+      <div class="card-body">
+        <p class="mb-2">{{ data.import.message }}</p>
+        {% if data.import.items %}
+          <div class="table-responsive nblp-change-list">
+            <table class="table table-sm mb-0">
+              <tbody>
+                {% for item in data.import.items %}
+                  <tr>
+                    <td class="text-nowrap" style="width: 1%;">
+                      {% if item.status == 'imported' %}<span class="nblp-status-pill nblp-status-changed">imported</span>
+                      {% elif item.status == 'planned' %}<span class="nblp-status-pill nblp-status-changed">would import</span>
+                      {% elif item.status == 'failed' %}<span class="nblp-status-pill nblp-status-error">failed</span>
+                      {% else %}<span class="nblp-status-pill nblp-status-skipped">{{ item.status }}</span>{% endif %}
+                    </td>
+                    <td>{{ item.name }}</td>
+                    <td class="small text-muted">{{ item.message|default:"" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if devices %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-result-filter>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Filter devices">
+        <button type="button" class="btn btn-outline-secondary active" data-filter="all">All</button>
+        <button type="button" class="btn btn-outline-primary" data-filter="changed">Changed</button>
+        <button type="button" class="btn btn-outline-danger" data-filter="error">Errors</button>
+        <button type="button" class="btn btn-outline-success" data-filter="ok">No change</button>
+        <button type="button" class="btn btn-outline-secondary" data-filter="skipped">Skipped</button>
+      </div>
+    </div>
+    <div class="accordion" id="nblp-run-{{ job.pk }}">
+      {% for device in devices %}
+        <div class="accordion-item nblp-device-row nblp-status-{{ device.overall }}" data-device-status="{{ device.overall }}">
+          <h2 class="accordion-header">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#nblp-run-{{ job.pk }}-dev-{{ device.pk }}" aria-expanded="false">
+              <span class="nblp-status-pill nblp-status-{{ device.overall }}">{{ device.overall }}</span>
+              <strong>{{ device.name }}</strong>
+              <span class="d-none d-md-inline ms-auto me-3">
+                {% for step in device.steps %}<span class="badge bg-transparent border nblp-status-{{ step.status }}" style="color: var(--nblp-status);" title="{{ step.label }}: {{ step.status }}">{{ step.label }}</span> {% endfor %}
+              </span>
+            </button>
+          </h2>
+          <div id="nblp-run-{{ job.pk }}-dev-{{ device.pk }}" class="accordion-collapse collapse">
+            <div class="accordion-body py-2">
+              <div class="mb-2"><a href="{{ device.url }}"><i class="mdi mdi-open-in-new"></i> Open device</a></div>
+              {% for step in device.steps %}
+                <div class="nblp-step-result py-2">
+                  <div class="d-flex align-items-start gap-2">
+                    <span class="nblp-status-pill nblp-status-{{ step.status }}">{{ step.status }}</span>
+                    <div class="flex-grow-1">
+                      <strong>{{ step.label }}</strong>
+                      <div class="small">{{ step.message }}</div>
+                      {% if step.changes and step.changes.lines %}
+                        <details class="mt-1">
+                          <summary class="small text-primary">
+                            {{ step.changes.created }} created, {{ step.changes.updated }} updated{% if step.changes.deleted %}, {{ step.changes.deleted }} deleted{% endif %}
+                          </summary>
+                          <ul class="small mb-0 nblp-change-list">
+                            {% for line in step.changes.lines %}<li><span class="text-muted">{{ line.action }}</span> {{ line.model }} <code>{{ line.object }}</code></li>{% endfor %}
+                            {% if step.changes.truncated %}<li class="text-muted">…and more</li>{% endif %}
+                          </ul>
+                        </details>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% elif finished and not data.skipped and not job.error and not data.import %}
+    <div class="text-muted">No devices matched the profile.</div>
+  {% endif %}
+</div>

@@ -1,0 +1,39 @@
+{% load form_helpers %}
+<form hx-post="{% url 'plugins:netbox_librenms_plugin:syncprofile_schedule' pk=object.pk %}" hx-target="#htmx-modal-content" id="nblp-schedule-form">
+  {% csrf_token %}
+  <div class="modal-header">
+    <h5 class="modal-title"><i class="mdi mdi-calendar-clock text-primary"></i> Schedule {{ object }}</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  </div>
+  <div class="modal-body">
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{% for error in form.non_field_errors %}{{ error }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
+    {% endif %}
+    {% if scheduled_job %}
+      <div class="alert alert-success py-2"><i class="mdi mdi-check-circle-outline"></i>
+        Next run {{ scheduled_job.scheduled|date:"Y-m-d H:i" }}, as {{ scheduled_job.user }}.</div>
+    {% else %}
+      <div class="alert alert-secondary py-2"><i class="mdi mdi-information-outline"></i> The profile runs on demand only.</div>
+    {% endif %}
+    {% render_field form.enabled %}
+    <div class="row mb-3">
+      <label class="col-sm-3 col-form-label text-lg-end">Quick pick</label>
+      <div class="col nblp-presets d-flex flex-wrap gap-2">
+        {% for minutes, label in presets %}
+          <button type="button" class="btn btn-sm btn-outline-primary"
+                  onclick="document.getElementById('{{ form.interval.id_for_label }}').value='{{ minutes }}'">{{ label }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    {% render_field form.interval %}
+    {% render_field form.schedule_start %}
+    <p class="small text-muted mb-0">Scheduled runs write as you, the user who saves this schedule.</p>
+  </div>
+  <div class="modal-footer">
+    {% if object.interval %}
+      <button type="submit" name="action" value="clear" class="btn btn-outline-danger me-auto"><i class="mdi mdi-calendar-remove"></i> Remove schedule</button>
+    {% endif %}
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="submit" name="action" value="save" class="btn btn-primary"><i class="mdi mdi-content-save"></i> Save</button>
+  </div>
+</form>

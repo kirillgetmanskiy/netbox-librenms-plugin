@@ -13,6 +13,7 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.urls import reverse
 from netbox.models import NetBoxModel
+from netbox.models.features import JobsMixin
 from utilities.fields import ColorField
 
 from netbox_librenms_plugin.utils import REGEX_COMPILE_ERRORS, get_object_site_id, validate_regex_field
@@ -1652,3 +1653,201 @@ class SerialSensorTypePattern(FullCleanOnSaveMixin, NetBoxModel):
 
     def __str__(self):
         return f"{self.sensor_type} -> {self.port_name_pattern}"
+
+
+class SyncProfile(JobsMixin, NetBoxModel):
+    """
+    A named, ordered set of sync steps that runs for a scope of devices on demand or on a schedule.
+
+    The scope is every NetBox device linked to the profile's LibreNMS server that matches all of the
+    set filters (sites, roles, platforms, tags, statuses). An empty filter matches every device. The
+    ``import_devices`` step can add LibreNMS devices that are not in NetBox yet; the devices it
+    imports join the scope of the steps that follow it.
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    description = models.CharField(max_length=200, blank=True)
+    enabled = models.BooleanField(
+        default=True,
+        help_text="A disabled profile keeps its settings, but neither its schedule nor Run now starts it.",
+    )
+    server_key = models.CharField(
+        max_length=100,
+        verbose_name="LibreNMS server",
+        help_text="The configured LibreNMS server this profile reads from.",
+    )
+    steps = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="The objects to sync, in the order the profile syncs them.",
+    )
+
+    # Device scope
+    sites = models.ManyToManyField("dcim.Site", blank=True, related_name="+")
+    roles = models.ManyToManyField("dcim.DeviceRole", blank=True, related_name="+")
+    platforms = models.ManyToManyField("dcim.Platform", blank=True, related_name="+")
+    device_tags = models.ManyToManyField(
+        "extras.Tag",
+        blank=True,
+        related_name="+",
+        verbose_name="Device tags",
+        help_text="Only devices that carry at least one of these tags.",
+    )
+    device_statuses = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Device statuses",
+        help_text="Only devices with one of these statuses.",
+    )
+
+    # Import of new devices (the import_devices step)
+    import_role = models.ForeignKey(
+        "dcim.DeviceRole",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Role for new devices",
+        help_text="Required by the Import new devices step: NetBox needs a role for each new device.",
+    )
+    import_site = models.ForeignKey(
+        "dcim.Site",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="Site for new devices",
+        help_text="Used when the LibreNMS location matches no NetBox site.",
+    )
+    librenms_type = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="LibreNMS type",
+        help_text="Import only LibreNMS devices of this type (for example network, server, wireless).",
+    )
+    librenms_os = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="LibreNMS OS",
+        help_text="Import only LibreNMS devices with this OS (for example ios, junos, fortigate).",
+    )
+    librenms_location = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="LibreNMS location contains",
+        help_text="Import only LibreNMS devices whose location contains this text (case-insensitive).",
+    )
+    librenms_hostname = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="LibreNMS hostname contains",
+        help_text="Import only LibreNMS devices whose hostname or sysName contains this text (case-insensitive).",
+    )
+
+    # Behaviour
+    continue_on_error = models.BooleanField(
+        default=True,
+        help_text="When a step fails for a device, run the device's remaining steps anyway.",
+    )
+
+    # Schedule
+    interval = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Interval (minutes)",
+        help_text="Run the profile every N minutes. Empty means on demand only.",
+    )
+    schedule_start = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="First run",
+        help_text="When the schedule starts. Empty means one interval from now.",
+    )
+
+    clone_fields = (
+        "server_key",
+        "steps",
+        "enabled",
+        "continue_on_error",
+        "device_statuses",
+        "import_role",
+        "import_site",
+    )
+
+    class Meta:
+        """Meta options for SyncProfile."""
+
+        ordering = ["name"]
+        verbose_name = "Sync profile"
+        verbose_name_plural = "Sync profiles"
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        """Return the URL of this profile's detail page."""
+        return reverse("plugins:netbox_librenms_plugin:syncprofile", args=[self.pk])
+
+    @property
+    def step_infos(self):
+        """Return the catalog entries of this profile's steps, in run order."""
+        from netbox_librenms_plugin.sync_profiles.catalog import STEPS_BY_KEY, normalize_steps
+
+        return [STEPS_BY_KEY[key] for key in normalize_steps(self.steps)]
+
+    @property
+    def is_scheduled(self):
+        """Return whether the profile runs on a schedule."""
+        return bool(self.enabled and self.interval)
+
+    @property
+    def next_run(self):
+        """Return when the schedule runs the profile next, or None."""
+        from netbox_librenms_plugin.sync_profiles.scheduling import scheduled_job
+
+        job = scheduled_job(self) if self.pk else None
+        return job.scheduled if job else None
+
+    @property
+    def last_job(self):
+        """Return the profile's most recent job that started, or None."""
+        from core.choices import JobStatusChoices
+
+        from netbox_librenms_plugin.sync_profiles.scheduling import profile_jobs
+
+        if not self.pk:
+            return None
+        return profile_jobs(self).exclude(status__in=JobStatusChoices.ENQUEUED_STATE_CHOICES).first()
+
+    def clean(self):
+        """Validate the steps, the statuses and the options that the chosen steps need."""
+        super().clean()
+        from dcim.choices import DeviceStatusChoices
+
+        from netbox_librenms_plugin.sync_profiles.catalog import STEP_IMPORT_DEVICES, STEPS_BY_KEY
+
+        if not isinstance(self.steps, list) or not all(isinstance(key, str) for key in self.steps):
+            raise ValidationError({"steps": "Steps must be a list of step names."})
+        unknown = [key for key in self.steps if key not in STEPS_BY_KEY]
+        if unknown:
+            raise ValidationError({"steps": f"Unknown steps: {', '.join(unknown)}."})
+        if len(set(self.steps)) != len(self.steps):
+            raise ValidationError({"steps": "Each step can appear only once."})
+        if not self.steps:
+            raise ValidationError({"steps": "Select at least one object to sync."})
+
+        valid_statuses = {value for value, _label in DeviceStatusChoices}
+        if not isinstance(self.device_statuses, list) or any(s not in valid_statuses for s in self.device_statuses):
+            raise ValidationError({"device_statuses": "Select device statuses from the list."})
+
+        if STEP_IMPORT_DEVICES in self.steps and not self.import_role_id:
+            raise ValidationError({"import_role": "The Import new devices step needs a role for the new devices."})
+
+        if self.interval is not None and self.interval < 5:
+            raise ValidationError({"interval": "The shortest interval is 5 minutes."})
+
+        from netbox_librenms_plugin.librenms_api import LibreNMSAPI
+
+        servers = LibreNMSAPI.get_available_servers()
+        if servers and self.server_key not in servers:
+            raise ValidationError({"server_key": "This LibreNMS server is not configured."})

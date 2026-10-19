@@ -1,4 +1,4 @@
-from netbox.plugins import PluginMenu, PluginMenuItem
+from netbox.plugins import PluginMenu, PluginMenuButton, PluginMenuItem
 
 from netbox_librenms_plugin.constants import PERM_VIEW_PLUGIN
 
@@ -13,6 +13,24 @@ menu = PluginMenu(
                     link="plugins:netbox_librenms_plugin:librenms_import",
                     link_text="LibreNMS Import",
                     permissions=[PERM_VIEW_PLUGIN],
+                ),
+            ),
+        ),
+        (
+            "Sync",
+            (
+                PluginMenuItem(
+                    link="plugins:netbox_librenms_plugin:syncprofile_list",
+                    link_text="Sync Profiles",
+                    permissions=[PERM_VIEW_PLUGIN, "netbox_librenms_plugin.view_syncprofile"],
+                    buttons=(
+                        PluginMenuButton(
+                            link="plugins:netbox_librenms_plugin:syncprofile_add",
+                            title="Add",
+                            icon_class="mdi mdi-plus-thick",
+                            permissions=["netbox_librenms_plugin.add_syncprofile"],
+                        ),
+                    ),
                 ),
             ),
         ),

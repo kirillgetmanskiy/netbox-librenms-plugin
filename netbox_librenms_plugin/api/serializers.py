@@ -1,4 +1,6 @@
+from dcim.api.serializers import DeviceRoleSerializer, PlatformSerializer, SiteSerializer
 from drf_spectacular.utils import extend_schema_serializer
+from extras.api.serializers import TagSerializer
 from netbox.api.serializers import NetBoxModelSerializer
 from rest_framework import serializers
 
@@ -14,6 +16,7 @@ from netbox_librenms_plugin.models import (
     PlatformMapping,
     PortStackLagPattern,
     SerialSensorTypePattern,
+    SyncProfile,
 )
 
 
@@ -237,3 +240,49 @@ class JobErrorSerializer(serializers.Serializer):
     """Serialize the sync_job_status error response."""
 
     error = serializers.CharField()
+
+
+@extend_schema_serializer(component_name="LibreNMSSyncProfile")
+class SyncProfileSerializer(NetBoxModelSerializer):
+    """Serialize SyncProfile model for REST API."""
+
+    sites = SiteSerializer(nested=True, many=True, required=False)
+    roles = DeviceRoleSerializer(nested=True, many=True, required=False)
+    platforms = PlatformSerializer(nested=True, many=True, required=False)
+    device_tags = TagSerializer(nested=True, many=True, required=False)
+    import_role = DeviceRoleSerializer(nested=True, required=False, allow_null=True)
+    import_site = SiteSerializer(nested=True, required=False, allow_null=True)
+
+    class Meta:
+        """Meta options for SyncProfileSerializer."""
+
+        model = SyncProfile
+        fields = [
+            "id",
+            "url",
+            "display",
+            "name",
+            "description",
+            "enabled",
+            "server_key",
+            "steps",
+            "continue_on_error",
+            "sites",
+            "roles",
+            "platforms",
+            "device_tags",
+            "device_statuses",
+            "import_role",
+            "import_site",
+            "librenms_type",
+            "librenms_os",
+            "librenms_location",
+            "librenms_hostname",
+            "interval",
+            "schedule_start",
+            "tags",
+            "custom_fields",
+            "created",
+            "last_updated",
+        ]
+        brief_fields = ("id", "url", "display", "name", "description", "enabled")

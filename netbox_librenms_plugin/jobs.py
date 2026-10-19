@@ -419,3 +419,119 @@ class ImportDevicesJob(JobRunner):
         self.logger.info(
             f"Import job completed. Success: {success_count}, Failed: {failed_count}, Skipped: {skipped_count}"
         )
+
+
+class SyncProfileJob(JobRunner):
+    """
+    Background run of one sync profile, on demand or on the profile's schedule.
+
+    The job belongs to its ``SyncProfile`` (``job.object``). A real run writes inside the NetBox
+    request processors of the request that queued it, so the change log names that user and the
+    event rules fire; a dry run makes and rolls back its writes outside them. The run result is
+    stored in ``job.data`` (see ``sync_profiles.engine.run_profile``).
+    """
+
+    class Meta:
+        """Meta options for SyncProfileJob."""
+
+        name = "LibreNMS Sync Profile"
+
+    @classmethod
+    def enqueue(cls, *args, **kwargs):
+        """Queue a run with the plugin's sync timeout; NetBox's own rescheduling does not carry it over."""
+        from netbox.plugins import get_plugin_config
+
+        kwargs.setdefault(
+            "job_timeout", get_plugin_config("netbox_librenms_plugin", "sync_profile_job_timeout") or 3600
+        )
+        return super().enqueue(*args, **kwargs)
+
+    def run(self, request=None, dry_run=False, device_pks=None, **kwargs):
+        """
+        Run the profile that this job belongs to.
+
+        Args:
+            request: The ``copy_safe_request()`` copy of the request that queued or scheduled the job.
+            dry_run: Roll back every write and only report what would change.
+            device_pks: Limit the run to these devices of the profile's scope.
+            **kwargs: Unused; accepted so a job queued by an older version still runs.
+
+        """
+        from core.choices import JobStatusChoices
+
+        from netbox_librenms_plugin.models import SyncProfile
+        from netbox_librenms_plugin.sync_profiles import scheduling
+        from netbox_librenms_plugin.sync_profiles.engine import run_profile
+
+        profile = SyncProfile.objects.filter(pk=self.job.object_id).first()
+        if profile is None:
+            self.job.interval = None
+            self.logger.warning("The sync profile no longer exists.")
+            return
+        user = _load_job_user(self.job)
+
+        busy = (
+            scheduling.profile_jobs(profile)
+            .filter(status=JobStatusChoices.STATUS_RUNNING)
+            .exclude(pk=self.job.pk)
+            .exists()
+        )
+        if not profile.enabled:
+            self.logger.warning(f"Profile {profile} is disabled; nothing was synced.")
+            self.job.data = {"skipped": "The profile is disabled.", "completed": True}
+        elif busy:
+            self.logger.warning(f"Another run of {profile} is still running; this run was skipped.")
+            self.job.data = {"skipped": "Another run of this profile was still running.", "completed": True}
+        else:
+            self.logger.info(f"Running sync profile {profile}" + (" (dry run)" if dry_run else ""))
+
+            def on_progress(progress):
+                # Kept in the cache, outside the database: a dry run's transaction would take it back.
+                scheduling.set_progress(self.job, {**progress, "dry_run": bool(dry_run)})
+
+            if dry_run or request is None:
+                if request is None and not dry_run:
+                    self.logger.warning("The job has no request; the change log will not name a user.")
+                result = run_profile(
+                    profile,
+                    user=user,
+                    dry_run=dry_run,
+                    device_pks=device_pks,
+                    job_runner=self,
+                    run_logger=self.logger,
+                    on_progress=on_progress,
+                )
+            else:
+                request.user = user
+                holder = {}
+
+                def run_as_request():
+                    from utilities.request import apply_request_processors
+
+                    with apply_request_processors(request):
+                        holder["result"] = run_profile(
+                            profile,
+                            user=user,
+                            dry_run=False,
+                            device_pks=device_pks,
+                            job_runner=self,
+                            run_logger=self.logger,
+                            on_progress=on_progress,
+                        )
+
+                contextvars.copy_context().run(run_as_request)
+                result = holder["result"]
+            self.job.data = result
+        self.job.save(update_fields=["data"])
+
+        # Keep the schedule only when it is still the profile's schedule; a changed or removed
+        # schedule already has its own job (or none), so this one must not queue its next run.
+        if self.job.interval:
+            profile.refresh_from_db()
+            other = scheduling.scheduled_job(profile)
+            if (
+                not profile.is_scheduled
+                or profile.interval != self.job.interval
+                or (other is not None and other.pk != self.job.pk)
+            ):
+                self.job.interval = None

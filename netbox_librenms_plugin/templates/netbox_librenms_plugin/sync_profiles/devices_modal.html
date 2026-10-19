@@ -1,0 +1,31 @@
+{% load helpers %}
+<div class="modal-header">
+  <h5 class="modal-title"><i class="mdi mdi-format-list-bulleted text-primary"></i> Devices in scope of {{ object }}</h5>
+  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+  <p class="text-muted">{{ total }} device{{ total|pluralize }} linked to <code>{{ object.server_key }}</code> match the profile's filters.
+    {% if 'import_devices' in object.steps %}The Import new devices step can add more when it runs.{% endif %}</p>
+  {% if devices %}
+    <div class="table-responsive" style="max-height: 60vh;">
+      <table class="table table-sm table-hover">
+        <thead class="sticky-top"><tr><th>Device</th><th>Site</th><th>Role</th><th>Platform</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for device in devices %}
+            <tr>
+              <td>{{ device|linkify }}</td>
+              <td>{{ device.site|linkify|placeholder }}</td>
+              <td>{{ device.role|linkify|placeholder }}</td>
+              <td>{{ device.platform|linkify|placeholder }}</td>
+              <td>{% badge device.get_status_display bg_color=device.get_status_color %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total > devices|length %}<p class="small text-muted mb-0">Showing the first {{ devices|length }}.</p>{% endif %}
+  {% endif %}
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+</div>

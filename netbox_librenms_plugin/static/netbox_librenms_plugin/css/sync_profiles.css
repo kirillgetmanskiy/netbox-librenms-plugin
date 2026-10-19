@@ -1,0 +1,31 @@
+/* Sync profiles: the ordered step picker, the step pipeline and the run results. */
+.nblp-step { transition: background-color .15s ease, opacity .15s ease; cursor: default; }
+.nblp-step:not(.is-checked) { opacity: .6; }
+.nblp-step.is-dragging { opacity: .35; }
+.nblp-step.is-drop-target { box-shadow: inset 0 3px 0 var(--tblr-primary, #206bc4); }
+.nblp-step-handle { cursor: grab; font-size: 1.25rem; line-height: 1; padding-top: .1rem; }
+.nblp-step-number { display: inline-block; min-width: 1.75rem; background: var(--tblr-gray-300, #dadfe5); color: var(--tblr-body-color, #1d273b); margin-top: .15rem; }
+.nblp-step.is-checked .nblp-step-number { background: var(--tblr-primary, #206bc4); color: #fff; }
+
+.nblp-pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.nblp-pipeline-step { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .7rem; border-radius: 999px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9); background: var(--tblr-bg-surface, #fff); }
+.nblp-pipeline-step .nblp-num { display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem;
+  border-radius: 50%; background: var(--tblr-primary, #206bc4); color: #fff; font-size: .75rem; font-weight: 600; }
+.nblp-pipeline-arrow { color: var(--tblr-secondary, #6c7a91); }
+
+.nblp-stat { border-radius: .5rem; padding: .75rem 1rem; background: var(--tblr-bg-surface-secondary, #f6f8fb); }
+.nblp-stat .nblp-stat-value { font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
+.nblp-stat .nblp-stat-label { font-size: .8rem; color: var(--tblr-secondary, #6c7a91); text-transform: uppercase; letter-spacing: .03em; }
+
+.nblp-status-changed { --nblp-status: var(--tblr-primary, #206bc4); }
+.nblp-status-ok { --nblp-status: var(--tblr-success, #2fb344); }
+.nblp-status-skipped { --nblp-status: var(--tblr-secondary, #6c7a91); }
+.nblp-status-error { --nblp-status: var(--tblr-danger, #d63939); }
+.nblp-status-pill { display: inline-block; padding: .1rem .55rem; border-radius: 999px; font-size: .75rem; font-weight: 600;
+  color: #fff; background: var(--nblp-status); }
+.nblp-device-row { border-left: 4px solid var(--nblp-status); }
+.nblp-device-row .accordion-button { gap: .75rem; }
+.nblp-step-result + .nblp-step-result { border-top: 1px dashed var(--tblr-border-color, #e6e7e9); }
+.nblp-change-list { max-height: 14rem; overflow-y: auto; }
+.nblp-presets .btn { min-width: 5.5rem; }

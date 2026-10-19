@@ -1,0 +1,26 @@
+{% load static %}
+<link rel="stylesheet" href="{% static 'netbox_librenms_plugin/css/sync_profiles.css' %}">
+<div class="nblp-steps" data-steps-widget>
+  <ol class="list-group nblp-steps-list">
+    {% for row in widget.steps %}
+      <li class="list-group-item d-flex align-items-start gap-2 nblp-step{% if row.checked %} is-checked{% endif %}" draggable="true">
+        <span class="nblp-step-handle text-muted" title="Drag to reorder"><i class="mdi mdi-drag-vertical"></i></span>
+        <span class="nblp-step-number badge rounded-pill"></span>
+        <div class="form-check flex-grow-1 mb-0">
+          <input class="form-check-input" type="checkbox" name="{{ widget.name }}" value="{{ row.info.key }}"
+                 id="{{ widget.attrs.id|default:'id_steps' }}_{{ row.info.key }}"{% if row.checked %} checked{% endif %}>
+          <label class="form-check-label w-100" for="{{ widget.attrs.id|default:'id_steps' }}_{{ row.info.key }}">
+            <i class="mdi {{ row.info.icon }} me-1"></i><strong>{{ row.info.label }}</strong>
+            {% if row.info.per_run %}<span class="badge text-bg-info ms-1">once per run</span>{% endif %}
+            <div class="small text-muted">{{ row.info.description }}</div>
+          </label>
+        </div>
+        <div class="btn-group btn-group-sm nblp-step-move" role="group" aria-label="Move">
+          <button type="button" class="btn btn-outline-secondary" data-move="up" title="Move up"><i class="mdi mdi-chevron-up"></i></button>
+          <button type="button" class="btn btn-outline-secondary" data-move="down" title="Move down"><i class="mdi mdi-chevron-down"></i></button>
+        </div>
+      </li>
+    {% endfor %}
+  </ol>
+</div>
+<script src="{% static 'netbox_librenms_plugin/js/sync_profiles.js' %}" defer></script>

@@ -25,6 +25,8 @@ class LibreNMSSyncConfig(PluginConfig):
         "enable_caching": True,
         "verify_ssl": True,
         "interface_name_field": DEFAULT_INTERFACE_NAME_FIELD,
+        # Seconds a sync profile run may take before the worker stops it.
+        "sync_profile_job_timeout": 3600,
         # Cable-sync provenance (tag name/color, cable description) and serial sensor
         # recognition (LibreNMS sensor_type -> local port-name pattern) are DB-backed, not
         # plugin settings: the Settings → Cable Sync tab (LibreNMSSettings fields with the
@@ -65,6 +67,12 @@ class LibreNMSSyncConfig(PluginConfig):
         from netbox_librenms_plugin import cache_signals
 
         cache_signals.connect()
+
+        # Sync profiles: report the rows each step writes, and drop a deleted profile's schedule.
+        from netbox_librenms_plugin.sync_profiles import recorder, signals as sync_profile_signals
+
+        recorder.connect()
+        sync_profile_signals.connect()
 
         # The late write of an interface row locks the row and checks its version just before the UPDATE.
         from dcim.models import Interface

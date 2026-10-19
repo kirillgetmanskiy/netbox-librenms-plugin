@@ -1,0 +1,29 @@
+{% extends 'generic/object.html' %}
+{% load static %}
+
+{% block head %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'netbox_librenms_plugin/css/sync_profiles.css' %}">
+{% endblock head %}
+
+{% block title %}{{ object }} · run {{ job.pk }}{% endblock %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item"><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>
+{% endblock breadcrumbs %}
+
+{% block control-buttons %}
+  <a class="btn btn-outline-secondary" href="{{ object.get_absolute_url }}"><i class="mdi mdi-arrow-left"></i> Back to profile</a>
+  <a class="btn btn-outline-secondary" href="{% url 'core:job' pk=job.pk %}"><i class="mdi mdi-text-box-outline"></i> Job log</a>
+{% endblock control-buttons %}
+
+{% block tabs %}{% endblock tabs %}
+
+{% block content %}
+  {% include 'netbox_librenms_plugin/sync_profiles/inc/run_results.html' %}
+{% endblock content %}
+
+{% block modals %}
+  <script src="{% static 'netbox_librenms_plugin/js/sync_profiles.js' %}" defer></script>
+{% endblock modals %}

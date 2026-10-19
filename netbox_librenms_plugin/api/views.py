@@ -27,6 +27,7 @@ from netbox_librenms_plugin.filters import (
     SerialSensorTypePatternFilterSet,
 )
 from netbox_librenms_plugin.jobs import FilterDevicesJob, ImportDevicesJob
+from netbox_librenms_plugin.sync_profiles.filtersets import SyncProfileFilterSet
 from netbox_librenms_plugin.models import (
     CarrierAutoInstallRule,
     DeviceTypeMapping,
@@ -39,6 +40,7 @@ from netbox_librenms_plugin.models import (
     PlatformMapping,
     PortStackLagPattern,
     SerialSensorTypePattern,
+    SyncProfile,
 )
 
 from .serializers import (
@@ -55,6 +57,7 @@ from .serializers import (
     PortStackLagPatternSerializer,
     SerialSensorTypePatternSerializer,
     SyncJobStatusSerializer,
+    SyncProfileSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -260,3 +263,12 @@ def sync_job_status(request, job_pk):
     except Exception as e:
         logger.exception("Unexpected error fetching RQ job for Job #%s: %s", job.pk, e)
         return JsonResponse({"error": "Failed to fetch RQ job status"}, status=500)
+
+
+class SyncProfileViewSet(NetBoxModelViewSet):
+    """API viewset for SyncProfile CRUD operations; runs and schedules are managed in the UI."""
+
+    permission_classes = [LibreNMSPluginPermission]
+    filterset_class = SyncProfileFilterSet
+    queryset = SyncProfile.objects.prefetch_related("sites", "roles", "platforms", "device_tags", "tags")
+    serializer_class = SyncProfileSerializer

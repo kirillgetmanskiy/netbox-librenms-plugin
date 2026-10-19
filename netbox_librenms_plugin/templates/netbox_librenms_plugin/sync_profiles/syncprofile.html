@@ -1,0 +1,174 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load static %}
+
+{% block head %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'netbox_librenms_plugin/css/sync_profiles.css' %}">
+{% endblock head %}
+
+{% block extra_controls %}
+  {% if can_run %}
+    <button type="button" class="btn btn-primary"
+            hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_run_now' pk=object.pk %}"
+            hx-target="#htmx-modal-content" data-bs-toggle="modal" data-bs-target="#htmx-modal"
+            {% if not object.enabled %}disabled title="The profile is disabled"{% endif %}>
+      <i class="mdi mdi-play"></i> Run now
+    </button>
+    <button type="button" class="btn btn-outline-primary"
+            hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_run_now' pk=object.pk %}?dry_run=1"
+            hx-target="#htmx-modal-content" data-bs-toggle="modal" data-bs-target="#htmx-modal"
+            {% if not object.enabled %}disabled{% endif %}>
+      <i class="mdi mdi-test-tube"></i> Dry run
+    </button>
+    <button type="button" class="btn btn-outline-secondary"
+            hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_schedule' pk=object.pk %}"
+            hx-target="#htmx-modal-content" data-bs-toggle="modal" data-bs-target="#htmx-modal">
+      <i class="mdi mdi-calendar-clock"></i> Schedule
+    </button>
+  {% endif %}
+{% endblock extra_controls %}
+
+{% block content %}
+  {% if active_job %}
+    <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      <div class="flex-grow-1">A run of this profile is {{ active_job.get_status_display|lower }}.</div>
+      <a class="btn btn-sm btn-info" href="{% url 'plugins:netbox_librenms_plugin:syncprofile_run' pk=object.pk job_pk=active_job.pk %}">Follow it</a>
+    </div>
+  {% endif %}
+
+  <div class="row mb-3">
+    <div class="col col-12">
+      <div class="card">
+        <h2 class="card-header d-flex justify-content-between align-items-center">
+          <span>Objects to sync, in order</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_devices' pk=object.pk %}"
+                  hx-target="#htmx-modal-content" data-bs-toggle="modal" data-bs-target="#htmx-modal">
+            <i class="mdi mdi-format-list-bulleted"></i> Devices in scope
+          </button>
+        </h2>
+        <div class="card-body">
+          <div class="nblp-pipeline">
+            {% for step in object.step_infos %}
+              {% if not forloop.first %}<i class="mdi mdi-arrow-right nblp-pipeline-arrow"></i>{% endif %}
+              <span class="nblp-pipeline-step" title="{{ step.description }}">
+                <span class="nblp-num">{{ forloop.counter }}</span>
+                <i class="mdi {{ step.icon }}"></i> {{ step.label }}
+              </span>
+            {% empty %}
+              <span class="text-muted">No steps selected.</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-3">
+    <div class="col col-12 col-md-6">
+      <div class="card">
+        <h2 class="card-header">Sync profile</h2>
+        <table class="table table-hover attr-table">
+          <tr><th scope="row">Name</th><td>{{ object.name }}</td></tr>
+          <tr><th scope="row">Description</th><td>{{ object.description|placeholder }}</td></tr>
+          <tr><th scope="row">LibreNMS server</th><td><code>{{ object.server_key }}</code></td></tr>
+          <tr><th scope="row">Enabled</th><td>{% checkmark object.enabled %}</td></tr>
+          <tr><th scope="row">On a failed step</th><td>{% if object.continue_on_error %}Continue with the device's next step{% else %}Stop the device's remaining steps{% endif %}</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h2 class="card-header">Devices to sync</h2>
+        <table class="table table-hover attr-table">
+          <tr><th scope="row">Sites</th><td>{% for site in object.sites.all %}{{ site|linkify }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">Any</span>{% endfor %}</td></tr>
+          <tr><th scope="row">Roles</th><td>{% for role in object.roles.all %}{{ role|linkify }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">Any</span>{% endfor %}</td></tr>
+          <tr><th scope="row">Platforms</th><td>{% for platform in object.platforms.all %}{{ platform|linkify }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">Any</span>{% endfor %}</td></tr>
+          <tr><th scope="row">Device tags</th><td>{% for tag in object.device_tags.all %}{% tag tag %}{% empty %}<span class="text-muted">Any</span>{% endfor %}</td></tr>
+          <tr><th scope="row">Statuses</th><td>{% for label in status_labels %}<span class="badge text-bg-secondary me-1">{{ label }}</span>{% empty %}<span class="text-muted">Any</span>{% endfor %}</td></tr>
+        </table>
+        <div class="card-footer text-muted small">Only devices linked to the LibreNMS server are synced.</div>
+      </div>
+      {% if 'import_devices' in object.steps %}
+        <div class="card">
+          <h2 class="card-header">Import of new devices</h2>
+          <table class="table table-hover attr-table">
+            <tr><th scope="row">Role for new devices</th><td>{{ object.import_role|linkify|placeholder }}</td></tr>
+            <tr><th scope="row">Site for new devices</th><td>{{ object.import_site|linkify|placeholder }}</td></tr>
+            <tr><th scope="row">LibreNMS type</th><td>{{ object.librenms_type|placeholder }}</td></tr>
+            <tr><th scope="row">LibreNMS OS</th><td>{{ object.librenms_os|placeholder }}</td></tr>
+            <tr><th scope="row">Location contains</th><td>{{ object.librenms_location|placeholder }}</td></tr>
+            <tr><th scope="row">Hostname contains</th><td>{{ object.librenms_hostname|placeholder }}</td></tr>
+          </table>
+        </div>
+      {% endif %}
+      {% include 'inc/panels/tags.html' %}
+      {% include 'inc/panels/custom_fields.html' %}
+    </div>
+
+    <div class="col col-12 col-md-6">
+      <div class="card">
+        <h2 class="card-header">Schedule</h2>
+        <table class="table table-hover attr-table">
+          <tr><th scope="row">Runs</th><td>
+            {% if object.is_scheduled %}<span class="badge text-bg-success"><i class="mdi mdi-calendar-clock"></i> every {{ object.interval }} min</span>
+            {% elif object.interval %}<span class="badge text-bg-warning">Paused: the profile is disabled</span>
+            {% else %}<span class="text-muted">On demand only</span>{% endif %}
+          </td></tr>
+          <tr><th scope="row">Next run</th><td>{% if scheduled_job %}{{ scheduled_job.scheduled|isodatetime }}{% else %}<span class="text-muted">—</span>{% endif %}</td></tr>
+          {% if scheduled_job %}<tr><th scope="row">Runs as</th><td>{{ scheduled_job.user|placeholder }}</td></tr>{% endif %}
+        </table>
+      </div>
+
+      <div class="card">
+        <h2 class="card-header">Recent runs</h2>
+        {% if runs %}
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Status</th><th>Started</th><th>Result</th><th></th></tr></thead>
+              <tbody>
+                {% for run in runs %}
+                  <tr>
+                    <td>
+                      {% badge run.job.get_status_display bg_color=run.job.get_status_color %}
+                      {% if run.dry_run %}<span class="badge text-bg-info">dry run</span>{% endif %}
+                      {% if run.job.interval %}<i class="mdi mdi-calendar-clock text-muted" title="Scheduled run"></i>{% endif %}
+                    </td>
+                    <td class="text-nowrap">{{ run.job.started|default:run.job.created|date:"Y-m-d H:i" }}
+                      {% if run.duration is not None %}<small class="text-muted">· {{ run.duration }}s</small>{% endif %}</td>
+                    <td class="small">
+                      {% if run.skipped_reason %}<span class="text-muted">{{ run.skipped_reason }}</span>
+                      {% elif run.summary %}
+                        {{ run.summary.devices }} devices ·
+                        <span class="text-primary">{{ run.summary.created }} created</span>,
+                        <span class="text-primary">{{ run.summary.updated }} updated</span>
+                        {% if run.summary.error %}· <span class="text-danger">{{ run.summary.error }} errors</span>{% endif %}
+                      {% elif run.job.error %}<span class="text-danger">{{ run.job.error|truncatechars:80 }}</span>
+                      {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" title="Quick view"
+                              hx-get="{% url 'plugins:netbox_librenms_plugin:syncprofile_run' pk=object.pk job_pk=run.job.pk %}?part=modal"
+                              hx-target="#htmx-modal-content" data-bs-toggle="modal" data-bs-target="#htmx-modal">
+                        <i class="mdi mdi-eye-outline"></i>
+                      </button>
+                      <a class="btn btn-sm btn-outline-primary" title="Open"
+                         href="{% url 'plugins:netbox_librenms_plugin:syncprofile_run' pk=object.pk job_pk=run.job.pk %}"><i class="mdi mdi-open-in-new"></i></a>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="card-body text-muted">The profile has not run yet. Start it with Run now or a schedule.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+
+{% block modals %}
+  {% include 'inc/htmx_modal.html' with size='xl' %}
+  <script src="{% static 'netbox_librenms_plugin/js/sync_profiles.js' %}" defer></script>
+{% endblock modals %}
