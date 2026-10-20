@@ -1163,6 +1163,12 @@ urlpatterns = [
         name="syncprofile_changelog",
         kwargs={"model": SyncProfile},
     ),
+    path(
+        "sync-profiles/<int:pk>/jobs/",
+        sync_profile_views.SyncProfileJobsView.as_view(),
+        name="syncprofile_jobs",
+        kwargs={"model": SyncProfile},
+    ),
     path("sync-profiles/<int:pk>/run/", sync_profile_views.SyncProfileRunView.as_view(), name="syncprofile_run_now"),
     path(
         "sync-profiles/<int:pk>/schedule/",

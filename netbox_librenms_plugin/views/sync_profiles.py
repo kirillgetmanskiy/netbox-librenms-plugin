@@ -7,6 +7,7 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.views import View
 from netbox.views import generic
 
@@ -132,6 +133,12 @@ class SyncProfileChangeLogView(LibreNMSGenericPermissionMixin, generic.ObjectCha
     base_template = f"{TEMPLATE_DIR}/syncprofile.html"
 
 
+class SyncProfileJobsView(LibreNMSGenericPermissionMixin, generic.ObjectJobsView):
+    """Every job of a profile; NetBox's job page links here from the job's object."""
+
+    base_template = f"{TEMPLATE_DIR}/syncprofile.html"
+
+
 class SyncProfileRunView(LoginRequiredMixin, View):
     """The Run now dialog: queue a real run or a dry run of the profile."""
 
@@ -246,6 +253,7 @@ class SyncProfileRunResultView(LoginRequiredMixin, View):
             "run": run_summary(job),
             "data": job.data if isinstance(job.data, dict) else {},
             "progress": scheduling.get_progress(job),
+            "log_entries": _log_entries(job),
             "finished": job.status
             not in (JobStatusChoices.ENQUEUED_STATE_CHOICES + (JobStatusChoices.STATUS_RUNNING,)),
             "step_label": step_label,
@@ -275,3 +283,19 @@ def _device_rows(data):
             overall = "ok"
         rows.append({**device, "overall": overall})
     return rows
+
+
+def _log_entries(job):
+    """Return the job's log: the saved log of a finished job, the live log of a running one."""
+    entries = list(job.log_entries or []) or scheduling.get_live_log(job)
+    return [
+        {
+            "level": entry.get("level", "info"),
+            "message": entry.get("message", ""),
+            "timestamp": parse_datetime(entry["timestamp"])
+            if isinstance(entry.get("timestamp"), str)
+            else entry.get("timestamp"),
+        }
+        for entry in entries
+        if isinstance(entry, dict)
+    ]

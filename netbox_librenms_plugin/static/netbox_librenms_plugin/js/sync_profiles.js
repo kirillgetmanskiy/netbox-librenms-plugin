@@ -77,7 +77,13 @@
     });
   }
 
+  // Keep the newest log lines in view while a run's results reload themselves.
+  function scrollLogs() {
+    document.querySelectorAll("[data-job-log]").forEach(function (box) { box.scrollTop = box.scrollHeight; });
+  }
+
   function initAll() {
+    scrollLogs();
     document.querySelectorAll("[data-steps-widget]").forEach(initStepsWidget);
     document.querySelectorAll("[data-result-filter]").forEach(initResultFilter);
   }

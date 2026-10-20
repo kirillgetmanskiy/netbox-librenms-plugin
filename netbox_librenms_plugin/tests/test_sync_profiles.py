@@ -469,6 +469,7 @@ class TestPages:
             name="LibreNMS Sync Profile",
             status=JobStatusChoices.STATUS_COMPLETED,
             job_id="00000000-0000-0000-0000-000000000001",
+            log_entries=[{"level": "warning", "message": "shown-log-line", "timestamp": "2026-10-20T08:58:41+00:00"}],
             data={
                 "dry_run": False,
                 "summary": {"devices": 1, "created": 0, "updated": 1, "ok": 0, "skipped": 0, "error": 0, "changed": 1},
@@ -490,6 +491,14 @@ class TestPages:
             assert page.status_code == 200
             assert b"shown-device" in page.content
             assert b"every 3s" not in page.content
+            assert b"shown-log-line" in page.content
+
+        # NetBox's own job page links to the profile's Jobs view.
+        assert client_su.get(reverse("core:job", args=[job.pk])).status_code == 200
+        assert (
+            client_su.get(reverse("plugins:netbox_librenms_plugin:syncprofile_jobs", args=[profile.pk])).status_code
+            == 200
+        )
 
 
 @pytest.mark.django_db
@@ -540,6 +549,7 @@ class TestJob:
         assert job.status == JobStatusChoices.STATUS_COMPLETED, job.error
         assert device.serial == "JOB51"
         assert job.data["summary"]["updated"] == 1
+        assert any("Running sync profile" in entry["message"] for entry in job.log_entries)
         change = ObjectChange.objects.filter(changed_object_id=device.pk, changed_object_type__model="device").latest(
             "time"
         )
@@ -584,3 +594,29 @@ class TestJob:
         device.refresh_from_db()
         assert device.serial == ""
         assert job.data["skipped"] == "The profile is disabled."
+
+
+@pytest.mark.django_db
+def test_a_running_job_shows_its_live_log(client, server_key):
+    from core.models import Job, ObjectType
+    from django.utils import timezone
+
+    from netbox_librenms_plugin.sync_profiles import scheduling
+
+    client.force_login(make_superuser())
+    profile = _profile(server_key, ["serial"], name="live-log")
+    job = Job.objects.create(
+        object_type=ObjectType.objects.get_for_model(profile),
+        object_id=profile.pk,
+        name="LibreNMS Sync Profile",
+        status=JobStatusChoices.STATUS_RUNNING,
+        job_id="00000000-0000-0000-0000-000000000002",
+    )
+    scheduling.append_live_log(job, {"level": "info", "message": "live-line", "timestamp": timezone.now()})
+
+    page = client.get(
+        reverse("plugins:netbox_librenms_plugin:syncprofile_run", args=[profile.pk, job.pk]) + "?part=results"
+    )
+
+    assert b"live-line" in page.content
+    assert b"every 3s" in page.content

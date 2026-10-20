@@ -23,6 +23,26 @@ def get_progress(job):
     return cache.get(_progress_key(job.pk))
 
 
+LIVE_LOG_LINES = 500
+
+
+def _log_key(job_pk):
+    return f"netbox_librenms_plugin_sync_profile_log_{job_pk}"
+
+
+def append_live_log(job, entry):
+    """Add one line to the log a running job shows; NetBox saves the job's own log only at the end."""
+    key = _log_key(job.pk)
+    lines = cache.get(key) or []
+    lines.append(entry)
+    cache.set(key, lines[-LIVE_LOG_LINES:], timeout=PROGRESS_TIMEOUT)
+
+
+def get_live_log(job):
+    """Return the live log of a running job, or an empty list."""
+    return cache.get(_log_key(job.pk)) or []
+
+
 def _job_class():
     from netbox_librenms_plugin.jobs import SyncProfileJob
 

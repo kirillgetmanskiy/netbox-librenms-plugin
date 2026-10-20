@@ -421,6 +421,27 @@ class ImportDevicesJob(JobRunner):
         )
 
 
+class _LiveLogHandler(logging.Handler):
+    """Mirror a sync job's log into the cache, so the run page shows it while the job runs."""
+
+    def __init__(self, job):
+        super().__init__()
+        self.job = job
+
+    def emit(self, record):
+        from django.utils import timezone
+
+        from netbox_librenms_plugin.sync_profiles.scheduling import append_live_log
+
+        try:
+            append_live_log(
+                self.job,
+                {"level": record.levelname.lower(), "message": record.getMessage(), "timestamp": timezone.now()},
+            )
+        except Exception:
+            pass
+
+
 class SyncProfileJob(JobRunner):
     """
     Background run of one sync profile, on demand or on the profile's schedule.
@@ -457,6 +478,14 @@ class SyncProfileJob(JobRunner):
             **kwargs: Unused; accepted so a job queued by an older version still runs.
 
         """
+        handler = _LiveLogHandler(self.job)
+        self.logger.addHandler(handler)
+        try:
+            self._run(request, dry_run, device_pks)
+        finally:
+            self.logger.removeHandler(handler)
+
+    def _run(self, request, dry_run, device_pks):
         from core.choices import JobStatusChoices
 
         from netbox_librenms_plugin.models import SyncProfile

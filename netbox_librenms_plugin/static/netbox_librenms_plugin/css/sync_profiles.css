@@ -29,3 +29,10 @@
 .nblp-step-result + .nblp-step-result { border-top: 1px dashed var(--tblr-border-color, #e6e7e9); }
 .nblp-change-list { max-height: 14rem; overflow-y: auto; }
 .nblp-presets .btn { min-width: 5.5rem; }
+
+.nblp-job-log { max-height: 22rem; overflow-y: auto; }
+.nblp-log-level { background: var(--tblr-secondary, #6c7a91); color: #fff; text-transform: uppercase; font-size: .65rem; }
+.nblp-log-info .nblp-log-level { background: var(--tblr-info, #4299e1); }
+.nblp-log-warning .nblp-log-level { background: var(--tblr-warning, #f76707); }
+.nblp-log-error .nblp-log-level, .nblp-log-critical .nblp-log-level { background: var(--tblr-danger, #d63939); }
+.nblp-log-error td, .nblp-log-critical td { color: var(--tblr-danger, #d63939); }

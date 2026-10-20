@@ -22,7 +22,7 @@ This file documents only the fork's additions. The upstream documentation (`READ
 | **Dry run** dialog | The same dialog with *Dry run* ticked. |
 | **Schedule** dialog | Turn the schedule on or off, pick an interval (quick picks: 15 min, 1 hour, 6 hours, 12 hours, 1 day) and the first run. |
 | **Devices in scope** dialog | The devices the profile syncs now. |
-| Run result | Summary counters, the import result, and a device list that can be filtered (All / Changed / Errors / No change / Skipped). Each device expands to show each step's result and the objects it created or updated. While the run is queued or running, the page reloads its result part every 3 seconds and shows a progress bar (step, device, count). A quick view of each run also opens in a dialog from the profile page. |
+| Run result | Summary counters, the import result, and a device list that can be filtered (All / Changed / Errors / No change / Skipped). Each device expands to show each step's result and the objects it created or updated. While the run is queued or running, the page reloads its result part every 3 seconds and shows a progress bar (step, device, count). The job log is shown under the results; while the run goes on it fills in live. A quick view of each run also opens in a dialog from the profile page. |
 
 ## Steps
 
@@ -81,7 +81,7 @@ device. *Run now* can narrow one run to a few devices.
 ## Schedule
 
 The schedule is a NetBox recurring job attached to the profile (*Operations → Jobs* lists
-it too). Saving the profile form or the Schedule dialog replaces the waiting job, so a profile
+it too, and a job's page links back to the profile's Jobs list). Saving the profile form or the Schedule dialog replaces the waiting job, so a profile
 has at most one; removing the interval or disabling the profile removes it, and deleting the
 profile removes its waiting jobs from the queue. A run whose schedule was changed while it
 ran does not queue another run. The next run is shown on the profile page and in the list.

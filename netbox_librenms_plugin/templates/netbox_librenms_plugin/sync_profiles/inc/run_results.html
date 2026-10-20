@@ -131,4 +131,28 @@
   {% elif finished and not data.skipped and not job.error and not data.import %}
     <div class="text-muted">No devices matched the profile.</div>
   {% endif %}
+
+  {% if log_entries %}
+    <div class="card mt-3">
+      <h2 class="card-header d-flex align-items-center gap-2">
+        <i class="mdi mdi-text-box-outline"></i> Job log
+        <span class="badge text-bg-secondary">{{ log_entries|length }}</span>
+        {% if not finished %}<span class="spinner-grow spinner-grow-sm text-primary" aria-hidden="true"></span>{% endif %}
+        <a class="btn btn-sm btn-outline-secondary ms-auto" href="{% url 'core:job_log' pk=job.pk %}"><i class="mdi mdi-open-in-new"></i> Full log</a>
+      </h2>
+      <div class="nblp-job-log" data-job-log>
+        <table class="table table-sm table-hover mb-0">
+          <tbody>
+            {% for entry in log_entries %}
+              <tr class="nblp-log-{{ entry.level }}">
+                <td class="text-nowrap text-muted small" style="width: 1%;">{{ entry.timestamp|date:"H:i:s" }}</td>
+                <td style="width: 1%;"><span class="badge nblp-log-level">{{ entry.level }}</span></td>
+                <td class="small font-monospace">{{ entry.message }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
 </div>
