@@ -123,6 +123,7 @@ pg_dump netbox > ~/netbox-before-librenms-fork.sql        # back up the database
 
 pip install --upgrade --force-reinstall --no-deps \
   "git+https://gitlab-a.ipotekabank.uz/GetmanskiyKV/netbox-librenms-plugin.git@feature/librenms-sync-jobs"
+pip install "google-re2>=1.1.20251105"     # the plugin's own dependency, which --no-deps skips
 python manage.py migrate netbox_librenms_plugin
 python manage.py collectstatic --no-input
 sudo systemctl restart netbox netbox-rq
