@@ -110,6 +110,29 @@ python manage.py collectstatic --no-input
 
 Runs need a NetBox RQ worker (`manage.py rqworker`), like every NetBox background job.
 
+## Upgrading an installed plugin to this fork
+
+On the NetBox server, in the NetBox virtual environment:
+
+```bash
+source /opt/netbox/venv/bin/activate
+pip show netbox-librenms-plugin            # the version installed now
+cd /opt/netbox/netbox
+python manage.py showmigrations netbox_librenms_plugin   # note the last applied migration
+pg_dump netbox > ~/netbox-before-librenms-fork.sql        # back up the database first
+
+pip install --upgrade --force-reinstall --no-deps \
+  "git+https://gitlab-a.ipotekabank.uz/GetmanskiyKV/netbox-librenms-plugin.git@feature/librenms-sync-jobs"
+python manage.py migrate netbox_librenms_plugin
+python manage.py collectstatic --no-input
+sudo systemctl restart netbox netbox-rq
+```
+
+To keep the fork on later NetBox upgrades, replace the plugin's line in
+`/opt/netbox/local_requirements.txt` with the same `git+https://…@feature/librenms-sync-jobs`
+URL. `PLUGINS_CONFIG` needs no change. The migration also applies the upstream migrations that
+the installed release may not have yet (up to `0024`), then adds `0025_syncprofile`.
+
 ## REST API
 
 `/api/plugins/librenms_plugin/sync-profiles/` offers the usual NetBox CRUD for profiles. Runs
