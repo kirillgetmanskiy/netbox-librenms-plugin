@@ -620,3 +620,26 @@ def test_a_running_job_shows_its_live_log(client, server_key):
 
     assert b"live-line" in page.content
     assert b"every 3s" in page.content
+
+
+@pytest.mark.django_db
+def test_the_run_dialog_offers_only_the_profile_devices(client, server_key):
+    client.force_login(make_superuser())
+    inside = _linked_device("picker-inside", 61, server_key)
+    planned = _linked_device("picker-planned", 62, server_key)
+    planned.status = "planned"
+    planned.save()
+    outside = make_device("picker-unlinked")
+    profile = _profile(server_key, ["serial"], name="picker", device_statuses=["active"])
+    url = reverse("plugins:netbox_librenms_plugin:syncprofile_run_now", args=[profile.pk])
+
+    page = client.get(url).content.decode()
+
+    assert "picker-inside" in page
+    assert "picker-planned" not in page
+    assert "picker-unlinked" not in page
+    refused = client.post(url, {"devices": [outside.pk]}, HTTP_HX_REQUEST="true")
+    assert refused.status_code == 200
+    assert "Select a valid choice" in refused.content.decode()
+    accepted = client.post(url, {"devices": [inside.pk]}, HTTP_HX_REQUEST="true")
+    assert accepted.status_code == 204

@@ -146,22 +146,22 @@ class SyncProfileRunView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         profile = _profile_for(request, pk, "change")
-        form = RunProfileForm(initial={"dry_run": request.GET.get("dry_run") == "1"})
-        form.fields["devices"].queryset = form.fields["devices"].queryset.restrict(request.user, "view")
-        return render(request, self.template_name, self._context(request, profile, form))
+        scope = scoped_devices(profile, request.user)
+        form = RunProfileForm(initial={"dry_run": request.GET.get("dry_run") == "1"}, scope=scope)
+        return render(request, self.template_name, self._context(profile, form, scope))
 
     def post(self, request, pk):
         profile = _profile_for(request, pk, "change")
-        form = RunProfileForm(request.POST)
-        form.fields["devices"].queryset = form.fields["devices"].queryset.restrict(request.user, "view")
+        scope = scoped_devices(profile, request.user)
+        form = RunProfileForm(request.POST, scope=scope)
         if not form.is_valid():
-            return render(request, self.template_name, self._context(request, profile, form))
+            return render(request, self.template_name, self._context(profile, form, scope))
         if not profile.enabled:
             form.add_error(None, "The profile is disabled. Enable it in the Schedule dialog or the edit form.")
-            return render(request, self.template_name, self._context(request, profile, form))
+            return render(request, self.template_name, self._context(profile, form, scope))
         if scheduling.active_jobs(profile).exists():
             form.add_error(None, "A run of this profile is already queued or running. Wait for it to finish.")
-            return render(request, self.template_name, self._context(request, profile, form))
+            return render(request, self.template_name, self._context(profile, form, scope))
         job = scheduling.run_now(
             profile,
             request,
@@ -177,11 +177,11 @@ class SyncProfileRunView(LoginRequiredMixin, View):
             request, reverse("plugins:netbox_librenms_plugin:syncprofile_run", args=[profile.pk, job.pk])
         )
 
-    def _context(self, request, profile, form):
+    def _context(self, profile, form, scope):
         return {
             "object": profile,
             "form": form,
-            "device_count": len(scoped_devices(profile, request.user)),
+            "device_count": len(scope),
             "steps": profile.step_infos,
         }
 

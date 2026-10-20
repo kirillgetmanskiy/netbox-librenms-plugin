@@ -141,19 +141,29 @@ class SyncProfileFilterForm(NetBoxModelFilterSetForm):
 
 
 class RunProfileForm(forms.Form):
-    """The Run now dialog: a real run or a dry run, for every device of the scope or a few of them."""
+    """
+    The Run now dialog: a real run or a dry run, for every device of the scope or a few of them.
+
+    *scope* is the profile's devices for this user; the device list offers only them.
+    """
 
     dry_run = forms.BooleanField(
         required=False,
         label="Dry run",
         help_text="Make every change, report it, and roll it back. NetBox stays as it is.",
     )
-    devices = DynamicModelMultipleChoiceField(
-        queryset=Device.objects.all(),
+    devices = forms.ModelMultipleChoiceField(
+        queryset=Device.objects.none(),
         required=False,
         label="Only these devices",
-        help_text="Leave empty to sync every device of the profile.",
+        help_text="Only devices that match the profile's filters are listed. Leave empty to sync all of them.",
     )
+
+    def __init__(self, *args, scope=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["devices"].queryset = Device.objects.filter(pk__in=[device.pk for device in scope]).order_by(
+            "name", "pk"
+        )
 
 
 class ScheduleProfileForm(forms.ModelForm):

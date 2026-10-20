@@ -18,7 +18,7 @@ This file documents only the fork's additions. The upstream documentation (`READ
 | Sync Profiles (list) | All profiles with their steps, schedule, next run and last run status. |
 | Add / Edit | The profile form. *Objects to sync* is a list of every step: tick the steps to run and drag them (or use the arrows) into the order to run them. |
 | Profile page | The step pipeline, the device scope, the schedule, and the recent runs. Its buttons open dialogs. |
-| **Run now** dialog | Queue a run: a real run or a dry run, for every device of the scope or only the devices picked in the dialog. |
+| **Run now** dialog | Queue a run: a real run or a dry run, for every device of the scope or only the devices picked in the dialog (the list offers only the devices that match the profile's filters). |
 | **Dry run** dialog | The same dialog with *Dry run* ticked. |
 | **Schedule** dialog | Turn the schedule on or off, pick an interval (quick picks: 15 min, 1 hour, 6 hours, 12 hours, 1 day) and the first run. |
 | **Devices in scope** dialog | The devices the profile syncs now. |
