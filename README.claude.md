@@ -35,6 +35,7 @@ Each step can be ticked once; the order of the ticked steps is the run order.
 | Platform | The platform that the LibreNMS OS matches (exact name or a Platform mapping). |
 | Device type | The device type that the LibreNMS hardware matches (part number, model or a Device type mapping). |
 | Interfaces | Creates and updates interfaces from LibreNMS ports with the plugin's interface writer: name, type (interface rules apply, including Ignore rules), speed, MTU, MAC, description, enabled state, and the LibreNMS port binding. Virtual chassis ports go to the member their name points to. |
+| Interface relationships | Reads the LibreNMS port stack (`/api/v0/devices/:id/port_stack`) and links the device's interfaces the way the interface sync tab does: sets each LAG member's *LAG* to its aggregate (an aggregate that is not of type LAG yet is changed to LAG), each sub-interface's *Parent* (a physical child becomes virtual, as in the tab), and each bridge member's *Bridge*. Both ends must already be NetBox interfaces bound to their LibreNMS ports; a missing end is reported as skipped (*sync interfaces first*). Interface rules apply to both ends, and a *Set type* rule that disagrees with the promotion skips the link. Each link has its own savepoint. Existing links are replaced only by what LibreNMS reports; nothing is unlinked. |
 | VLANs | Creates the device's LibreNMS VLANs in the device's site when neither the site nor the global VLANs (no site, no group) have the VID, and sets each bound interface's 802.1Q mode, untagged VLAN and tagged VLANs. |
 | IP addresses | Creates the device's IP addresses (global VRF) on the interfaces bound to their LibreNMS ports, or assigns an existing unassigned address. Loopback, link-local and multicast addresses are skipped; an address assigned elsewhere is reported, not moved. |
 | Primary IP | Sets the primary IPv4 or IPv6 address to the address LibreNMS polls the device on, when that address is on one of the device's interfaces. |
@@ -43,7 +44,7 @@ Each step can be ticked once; the order of the ticked steps is the run order.
 Each step runs for **every** device of the scope before the next step starts, so a step that
 links devices (Cables) sees the interfaces that the earlier steps made on all of them. Steps
 that depend on others need them earlier in the order: IP addresses need Interfaces, Primary IP
-needs IP addresses, Cables need Interfaces on both ends.
+needs IP addresses, Cables need Interfaces on both ends, Interface relationships need Interfaces.
 
 A step ends as **changed** (it wrote something), **ok** (nothing to change), **skipped**
 (nothing it could do, with the reason: no serial in LibreNMS, no matching platform, …) or

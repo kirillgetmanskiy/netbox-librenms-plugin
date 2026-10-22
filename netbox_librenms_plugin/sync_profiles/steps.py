@@ -41,6 +41,7 @@ class SyncContext:
         self.logger = run_logger or logger
         self._device_info = {}
         self._ports = {}
+        self._port_stacks = {}
         self._rules = None
 
     # LibreNMS reads, cached for the run so later steps reuse what earlier steps fetched.
@@ -72,6 +73,15 @@ class SyncContext:
                 raise StepError(f"Could not read the ports from LibreNMS: {data}")
             self._ports[librenms_id] = [port for port in ports if isinstance(port, dict)]
         return self._ports[librenms_id]
+
+    def port_stack(self, device):
+        librenms_id = self.librenms_id(device)
+        if librenms_id not in self._port_stacks:
+            success, data = self.api.get_port_stack(librenms_id)
+            if not success or not isinstance(data, list):
+                raise StepError(f"Could not read the port stack from LibreNMS: {data}")
+            self._port_stacks[librenms_id] = data
+        return self._port_stacks[librenms_id]
 
     @property
     def rules(self):
@@ -272,6 +282,163 @@ def sync_interfaces(ctx, device):
             message += f"; and {len(problems) - 10} more"
     if problems and not synced:
         raise StepError(message + ".")
+    return message + "."
+
+
+# Interface relationships
+
+
+class _RelationshipSync:
+    """Link the LAG, parent and bridge edges of one device with the interface sync view's relationship writer."""
+
+    def __init__(self, ctx, device, ports):
+        from netbox_librenms_plugin.utils import normalize_librenms_port_id
+
+        self.ctx = ctx
+        self.device = device
+        self.ports_by_id = {}
+        for port in ports:
+            port_id = normalize_librenms_port_id(port.get("port_id"))
+            if port_id is not None:
+                self.ports_by_id[port_id] = port
+        self.changeable = ctx.restrict(Interface, "change")
+        self.linked = {"lag": 0, "parent": 0, "bridge": 0}
+        self.unchanged = 0
+        self.skipped = []
+        self.failed = []
+
+    def edge(self, field, source_port_id, related_port_id):
+        """Set ``source.<field> = related`` for one LibreNMS edge, in its own savepoint."""
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError
+
+        from netbox_librenms_plugin.utils import validation_error_detail
+        from netbox_librenms_plugin.views.sync.interfaces import (
+            _apply_interface_relationship,
+            _lag_aggregate_needs_promotion,
+            _parent_child_needs_promotion,
+        )
+
+        source = self.ctx.interface_for_port(self.device, source_port_id)
+        related = self.ctx.interface_for_port(self.device, related_port_id)
+        if source is None or related is None:
+            missing = source_port_id if source is None else related_port_id
+            self.skipped.append(
+                f"{field} link {source_port_id} → {related_port_id}: LibreNMS port {missing} is not in NetBox "
+                "(sync interfaces first)"
+            )
+            return
+        label = f"{source.name} → {related.name}"
+        try:
+            with transaction.atomic():
+                source = Interface.objects.select_for_update().get(pk=source.pk)
+                related = Interface.objects.select_for_update().get(pk=related.pk)
+                promote_related = field == "lag" and _lag_aggregate_needs_promotion(related)
+                promote_source = field == "parent" and _parent_child_needs_promotion(source)
+                if getattr(source, f"{field}_id") == related.pk and not promote_related and not promote_source:
+                    self.unchanged += 1
+                    return
+                if not self.allowed(source, related, promote_related, label):
+                    return
+                if not self.rules_allow(field, source_port_id, source, related_port_id, related, label):
+                    return
+                _apply_interface_relationship(source, field, related, *self.preparations(field))
+            self.linked[field] += 1
+        except (ValidationError, IntegrityError) as exc:
+            detail = validation_error_detail(exc) if isinstance(exc, ValidationError) else exc
+            self.failed.append(f"{label}: {detail}")
+
+    def allowed(self, source, related, promote_related, label):
+        if not self.changeable.filter(pk=source.pk).exists():
+            self.failed.append(f"{label}: you may not change {source.name}")
+            return False
+        if promote_related and not self.changeable.filter(pk=related.pk).exists():
+            self.failed.append(f"{label}: you may not change {related.name}")
+            return False
+        return True
+
+    def rules_allow(self, field, source_port_id, source, related_port_id, related, label):
+        """Apply the interface rules to both ends, as the interface sync view does."""
+        from netbox_librenms_plugin.views.sync.interfaces import (
+            _lag_aggregate_needs_promotion,
+            _parent_child_needs_promotion,
+            _promotion_conflict,
+            _relationship_decisions,
+        )
+
+        decisions, blocked, reason = _relationship_decisions(
+            self.ctx.rules,
+            (self.ports_by_id.get(source_port_id), source),
+            (self.ports_by_id.get(related_port_id), related),
+        )
+        if decisions is None:
+            self.skipped.append(f"{label}: {blocked.name} {reason}")
+            return False
+        conflict = None
+        if field == "lag" and _lag_aggregate_needs_promotion(related):
+            conflict = _promotion_conflict(decisions[1], "lag")
+        elif field == "parent" and _parent_child_needs_promotion(source):
+            conflict = _promotion_conflict(decisions[0], "virtual")
+        if conflict:
+            self.skipped.append(f"{label}: {conflict}")
+            return False
+        return True
+
+    @staticmethod
+    def preparations(field):
+        """Return the ``(prepare_related, prepare_source)`` hooks of the interface sync view for *field*."""
+        from netbox_librenms_plugin.views.sync.interfaces import _promote_lag_aggregate, _promote_parent_child
+
+        if field == "lag":
+            return (lambda aggregate: _promote_lag_aggregate(aggregate, with_restore=False)), None
+        if field == "parent":
+            return None, (lambda child: _promote_parent_child(child, with_restore=False))
+        return None, None
+
+
+def sync_interface_relationships(ctx, device):
+    ports = ctx.ports(device)
+    port_stack = ctx.port_stack(device)
+    if not ports or not port_stack:
+        raise StepSkipped("LibreNMS reports no port stack for this device.")
+    ctx.require(Interface, "change")
+    try:
+        device_os = _clean_text(ctx.device_info(device).get("os"))
+    except StepError:
+        # A blank OS scopes the name patterns to none, as the interfaces tab does.
+        device_os = ""
+    relationships = ctx.api.resolve_port_relationships(
+        ports,
+        port_stack,
+        device_os=device_os,
+        interface_name_field=ctx.interface_name_field(device),
+    )
+    edges = [
+        (field, source, related)
+        for field, key in (("lag", "lag_members"), ("parent", "sub_interfaces"), ("bridge", "bridge_members"))
+        for source, related in (relationships.get(key) or {}).items()
+    ]
+    if not edges:
+        raise StepSkipped("The LibreNMS port stack has no LAG, sub-interface or bridge relationships.")
+
+    sync = _RelationshipSync(ctx, device, ports)
+    for field, source, related in edges:
+        sync.edge(field, source, related)
+    linked = sync.linked
+    message = (
+        f"{linked['lag']} LAG members, {linked['parent']} sub-interfaces, {linked['bridge']} bridge members linked, "
+        f"{sync.unchanged} already in place"
+    )
+    if sync.skipped:
+        message += _problem_list(sync.skipped)
+    if sync.failed:
+        message += f"; {len(sync.failed)} refused: " + "; ".join(sync.failed[:10])
+        if len(sync.failed) > 10:
+            message += f"; and {len(sync.failed) - 10} more"
+    if not any(linked.values()) and not sync.unchanged:
+        if sync.failed:
+            raise StepError(message + ".")
+        raise StepSkipped(message + ".")
     return message + "."
 
 
@@ -600,6 +767,7 @@ DEVICE_STEPS = {
     catalog.STEP_PLATFORM: sync_platform,
     catalog.STEP_DEVICE_TYPE: sync_device_type,
     catalog.STEP_INTERFACES: sync_interfaces,
+    catalog.STEP_INTERFACE_RELATIONSHIPS: sync_interface_relationships,
     catalog.STEP_VLANS: sync_vlans,
     catalog.STEP_IP_ADDRESSES: sync_ip_addresses,
     catalog.STEP_PRIMARY_IP: sync_primary_ip,

@@ -20,6 +20,7 @@ STEP_SERIAL = "serial"
 STEP_PLATFORM = "platform"
 STEP_DEVICE_TYPE = "device_type"
 STEP_INTERFACES = "interfaces"
+STEP_INTERFACE_RELATIONSHIPS = "interface_relationships"
 STEP_VLANS = "vlans"
 STEP_IP_ADDRESSES = "ip_addresses"
 STEP_PRIMARY_IP = "primary_ip"
@@ -53,6 +54,13 @@ STEPS = (
         "Create and update interfaces from LibreNMS ports: name, type, speed, MTU, MAC, description and status. "
         "Interface rules (ignore / set type) apply.",
         "mdi-ethernet",
+    ),
+    StepInfo(
+        STEP_INTERFACE_RELATIONSHIPS,
+        "Interface relationships",
+        "Set LAG membership, sub-interface parents and bridge membership from the LibreNMS port stack. "
+        "Interface rules apply. Run after Interfaces.",
+        "mdi-link-variant",
     ),
     StepInfo(
         STEP_VLANS,

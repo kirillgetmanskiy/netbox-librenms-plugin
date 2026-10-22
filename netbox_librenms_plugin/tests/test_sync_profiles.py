@@ -21,6 +21,7 @@ class FakeAPI:
         self.ips = ips or {}
         self.vlans = {}
         self.links = {}
+        self.stacks = {}
         self.calls = []
 
     def get_device_info(self, device_id, use_cache=True, cache_only=False):
@@ -41,6 +42,14 @@ class FakeAPI:
 
     def get_device_links(self, device_id):
         return True, {"links": self.links.get(device_id, [])}
+
+    def get_port_stack(self, device_id):
+        return True, self.stacks.get(device_id, [])
+
+    def resolve_port_relationships(self, ports, port_stack, **kwargs):
+        from netbox_librenms_plugin.librenms_api import LibreNMSAPI
+
+        return LibreNMSAPI.resolve_port_relationships(self, ports, port_stack, **kwargs)
 
     def parse_port_vlan_data(self, port, name_field):
         from netbox_librenms_plugin.librenms_api import LibreNMSAPI
@@ -298,6 +307,66 @@ class TestRun:
         assert local.cable_id == remote.cable_id is not None
         assert _steps_of(result, left)["cables"]["status"] == "changed"
         assert "1 already connected" in _steps_of(result, right)["cables"]["message"]
+
+    def test_relationships_link_a_lag_member_and_promote_its_aggregate(self, server_key, fake_api):
+        device = _linked_device("run-lag", 61, server_key)
+        fake_api.ports[61] = [_port(6101, "ae0", ifType="ieee8023adLag"), _port(6102, "xe-0/0/0")]
+        # LibreNMS lists the aggregate as the low port and the member as the high port.
+        fake_api.stacks[61] = [{"high_port_id": 6102, "low_port_id": 6101}]
+        _run(_profile(server_key, ["interfaces"]))
+        # An aggregate that is not of type LAG yet gets promoted when its first member is linked.
+        Interface.objects.filter(device=device, name="ae0").update(type="other")
+
+        result = _run(_profile(server_key, ["interface_relationships"], name="relationships"))
+
+        step = _steps_of(result, device)["interface_relationships"]
+        assert step["status"] == "changed"
+        assert "1 LAG members" in step["message"]
+        aggregate = Interface.objects.get(device=device, name="ae0")
+        member = Interface.objects.get(device=device, name="xe-0/0/0")
+        assert aggregate.type == "lag"
+        assert member.lag_id == aggregate.pk
+
+        again = _run(_profile(server_key, ["interface_relationships"], name="relationships-again"))
+
+        assert _steps_of(again, device)["interface_relationships"]["status"] == "ok"
+
+    def test_relationships_set_a_sub_interface_parent(self, server_key, fake_api):
+        device = _linked_device("run-parent", 62, server_key)
+        fake_api.ports[62] = [_port(6201, "ge-0/0/1"), _port(6202, "ge-0/0/1.100", ifType="l2vlan")]
+        fake_api.stacks[62] = [{"high_port_id": 6202, "low_port_id": 6201}]
+
+        result = _run(_profile(server_key, ["interfaces", "interface_relationships"]))
+
+        step = _steps_of(result, device)["interface_relationships"]
+        assert step["status"] == "changed"
+        assert "1 sub-interfaces" in step["message"]
+        parent = Interface.objects.get(device=device, name="ge-0/0/1")
+        child = Interface.objects.get(device=device, name="ge-0/0/1.100")
+        assert child.parent_id == parent.pk
+        assert parent.parent_id is None
+
+    def test_relationships_skip_ports_that_are_not_in_netbox(self, server_key, fake_api):
+        device = _linked_device("run-lag-missing", 63, server_key)
+        fake_api.ports[63] = [_port(6301, "ae1", ifType="ieee8023adLag"), _port(6302, "xe-0/0/1")]
+        fake_api.stacks[63] = [{"high_port_id": 6302, "low_port_id": 6301}]
+
+        result = _run(_profile(server_key, ["interface_relationships"]))
+
+        step = _steps_of(result, device)["interface_relationships"]
+        assert step["status"] == "skipped"
+        assert "sync interfaces first" in step["message"]
+        assert not Interface.objects.filter(device=device).exists()
+
+    def test_relationships_skip_an_empty_port_stack(self, server_key, fake_api):
+        device = _linked_device("run-no-stack", 64, server_key)
+        fake_api.ports[64] = [_port(6401, "eth0")]
+
+        result = _run(_profile(server_key, ["interfaces", "interface_relationships"]))
+
+        step = _steps_of(result, device)["interface_relationships"]
+        assert step["status"] == "skipped"
+        assert "no port stack" in step["message"]
 
     def test_steps_run_in_the_profile_order(self, server_key, fake_api):
         """IP addresses before interfaces finds no interface, so the order matters."""
